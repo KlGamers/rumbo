@@ -100,3 +100,12 @@ def test_config_errors():
 
 def test_case_is_hashable():
     assert len({Case("a", "x"), Case("a", "x")}) == 1
+
+
+def test_report_markdown_includes_scope_rows():
+    rep = score(
+        ["a", "oos"], ["a", "oos"], ms=[1.0, 2.0], stages=["knn", "fallback"], out_lbl="oos"
+    )
+    md = rep.to_md()
+    assert "in-scope accuracy | 1.0000" in md and "out-of-scope recall | 1.0000" in md
+    assert "decided by knn | 50.0%" in md

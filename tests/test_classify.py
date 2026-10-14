@@ -73,6 +73,7 @@ def test_pattern():
         ('{"route": "made-up"}', None),
         ("not json", None),
         ("{broken", None),
+        ('{"route": }', None),
     ],
 )
 def test_llm_parsing(raw, want):
