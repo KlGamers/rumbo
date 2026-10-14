@@ -1,0 +1,65 @@
+[router]
+fallback = "general"
+
+[[router.stages]]
+kind = "pattern"
+
+[[router.stages]]
+kind = "knn"
+embedder = "hash"
+k = 3
+min_score = 0.12
+
+[[routes]]
+name = "code"
+desc = "Programming questions, debugging, code review"
+target = "coder"
+backups = ["general"]
+patterns = ["```", "\\btraceback\\b", "\\bstack ?trace\\b"]
+examples = [
+  "why does this function return undefined",
+  "write a python script that renames files",
+  "fix the null pointer exception in my java class",
+  "how do i reverse a linked list in c++",
+  "explain what this regex does",
+  "my docker build fails with exit code 1",
+  "refactor this loop to use map and filter",
+  "what is the time complexity of quicksort",
+]
+
+[[routes]]
+name = "math"
+desc = "Arithmetic, algebra, calculus, statistics"
+target = "reasoner"
+backups = ["general"]
+examples = [
+  "what is the derivative of x squared times sin x",
+  "solve 3x + 7 = 22",
+  "what is 18 percent of 240",
+  "integrate e to the x from zero to one",
+  "find the standard deviation of 4 8 15 16 23 42",
+  "how many ways can i arrange 5 books on a shelf",
+  "convert 0.375 to a fraction",
+  "what is the probability of two heads in three coin flips",
+]
+
+[[routes]]
+name = "writing"
+desc = "Drafting, rewriting, summarising and translating text"
+target = "writer"
+backups = ["general"]
+examples = [
+  "rewrite this email so it sounds more polite",
+  "summarise this article in three sentences",
+  "translate this paragraph into french",
+  "write a short product description for a water bottle",
+  "proofread my cover letter",
+  "make this sentence shorter",
+  "give me a catchy title for a blog post about travel",
+  "turn these notes into a formal report",
+]
+
+[[routes]]
+name = "general"
+desc = "Anything else"
+target = "general"
