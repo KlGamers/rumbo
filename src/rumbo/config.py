@@ -6,19 +6,36 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from .classify import CentroidClassifier, Classifier, KnnClassifier, PatternClassifier
-from .embed import Embedder, HashEmbedder, HttpEmbedder, StaticEmbedder
+from .classify import (
+    CentroidClassifier,
+    Classifier,
+    KnnClassifier,
+    LinearClassifier,
+    PatternClassifier,
+)
+from .embed import (
+    ConcatEmbedder,
+    Embedder,
+    HashEmbedder,
+    HttpEmbedder,
+    OnnxEmbedder,
+    StaticEmbedder,
+)
 from .router import Router, Stage
 from .types import Route
 
 
 def _embedder(spec: dict[str, Any], routes: list[Route]) -> Embedder:
     kind = spec.get("embedder", "hash")
+    if isinstance(kind, list):
+        return ConcatEmbedder(*[_embedder({**spec, "embedder": k}, routes) for k in kind])
     if kind == "hash":
         emb = HashEmbedder(dim=int(spec.get("dim", 2048)))
         return emb.fit([e for r in routes for e in r.examples])
     if kind == "static":
         return StaticEmbedder(spec.get("model", "minishlab/potion-base-8M"))
+    if kind == "onnx":
+        return OnnxEmbedder(spec.get("model", "BAAI/bge-small-en-v1.5"))
     if kind == "http":
         return HttpEmbedder(spec["url"], spec["model"], os.environ.get(spec.get("key_env", ""), ""))
     raise ValueError(f"unknown embedder {kind!r}")
@@ -32,6 +49,13 @@ def _clf(spec: dict[str, Any], routes: list[Route]) -> Classifier:
         return CentroidClassifier(routes, _embedder(spec, routes))
     if kind == "knn":
         return KnnClassifier(routes, _embedder(spec, routes), k=int(spec.get("k", 5)))
+    if kind == "linear":
+        return LinearClassifier(
+            routes,
+            _embedder(spec, routes),
+            l2=float(spec.get("l2", 1e-5)),
+            epochs=int(spec.get("epochs", 300)),
+        )
     raise ValueError(f"unknown stage kind {kind!r}")
 
 

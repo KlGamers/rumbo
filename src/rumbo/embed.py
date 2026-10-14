@@ -68,6 +68,30 @@ class HashEmbedder:
         return unit(raw)
 
 
+class ConcatEmbedder:
+    def __init__(self, *parts: Embedder) -> None:
+        if not parts:
+            raise ValueError("need at least one embedder")
+        self.parts = parts
+
+    def embed(self, texts: Sequence[str]) -> np.ndarray:
+        return np.hstack([p.embed(texts) for p in self.parts]) / np.sqrt(len(self.parts))
+
+
+class OnnxEmbedder:
+    def __init__(self, name: str = "BAAI/bge-small-en-v1.5", batch: int = 256) -> None:
+        from fastembed import TextEmbedding
+
+        self.mdl = TextEmbedding(name)
+        self.batch = batch
+
+    def embed(self, texts: Sequence[str]) -> np.ndarray:
+        if not texts:
+            return np.zeros((0, 0), dtype=np.float32)
+        vecs = self.mdl.embed(list(texts), batch_size=self.batch)
+        return unit(np.asarray(list(vecs), dtype=np.float32))
+
+
 class StaticEmbedder:
     def __init__(self, name: str = "minishlab/potion-base-8M") -> None:
         from model2vec import StaticModel
@@ -79,9 +103,18 @@ class StaticEmbedder:
 
 
 class HttpEmbedder:
-    def __init__(self, url: str, model: str, key: str = "", timeout: float = 30.0) -> None:
+    def __init__(
+        self,
+        url: str,
+        model: str,
+        key: str = "",
+        timeout: float = 30.0,
+        transport: httpx.BaseTransport | None = None,
+    ) -> None:
         hdr = {"Authorization": f"Bearer {key}"} if key else {}
-        self.cli = httpx.Client(base_url=url.rstrip("/"), headers=hdr, timeout=timeout)
+        self.cli = httpx.Client(
+            base_url=url.rstrip("/"), headers=hdr, timeout=timeout, transport=transport
+        )
         self.model = model
 
     def embed(self, texts: Sequence[str]) -> np.ndarray:
