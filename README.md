@@ -21,8 +21,8 @@ etiquetados y lees la exactitud antes de salir a producción.
 pip install git+https://github.com/KlGamers/rumbo
 ```
 
-El núcleo solo necesita `numpy` y `httpx`. Agrega `[static]` para el embedder
-opcional de `model2vec`.
+El núcleo solo necesita `numpy` y `httpx`. Agrega `[static]` para
+`model2vec` u `[onnx]` para modelos transformer con `fastembed`.
 
 ## Inicio rápido
 
@@ -57,9 +57,12 @@ un pipeline de CI.
 | `PatternClassifier` | Reglas regex por ruta. Gratis, exacto y bueno como primera etapa |
 | `CentroidClassifier` | Un vector promedio por ruta. Una sola multiplicación de matrices pequeña |
 | `KnnClassifier` | Similitud promedio de los `k` ejemplos más cercanos de cada ruta |
+| `LinearClassifier` | Regresión logística entrenada en NumPy. La opción más precisa y la más rápida |
 | `LlmClassifier` | Le pide a un modelo de chat un veredicto en JSON y lo interpreta con cuidado |
 | `HashEmbedder` | Hashing de n-gramas de caracteres con pesos IDF. No descarga ningún modelo |
 | `StaticEmbedder` | Embeddings estáticos con `model2vec` |
+| `OnnxEmbedder` | Modelos tipo transformer en ONNX con `fastembed`, sin GPU |
+| `ConcatEmbedder` | Une varios embedders en un solo vector |
 | `HttpEmbedder` | Cualquier endpoint `/embeddings` compatible con OpenAI |
 | `Router` | Corre las etapas en orden y acepta la primera respuesta con suficiente confianza |
 | `Router.dispatch` | Manda el mensaje al proveedor de la ruta y, si falla, a sus respaldos |
@@ -101,50 +104,50 @@ respuestas 429 y 5xx con espera exponencial.
 
 `scripts/bench_clinc.py` enruta las consultas de
 [CLINC150](https://github.com/clinc/oos-eval) a sus 10 dominios y manda las
-consultas fuera de alcance al respaldo. Las rutas se construyen con las 15,000
-consultas de entrenamiento, los umbrales se ajustan con las 3,100 de
-validación y la tabla reporta las 5,500 de prueba, de las cuales 1,000 están
-fuera de alcance. La latencia es por mensaje, en un núcleo de una laptop Apple
-Silicon, e incluye el cálculo del embedding.
+consultas fuera de alcance a una ruta de respaldo. Las rutas se construyen con
+las 15,000 consultas de entrenamiento más las 100 de ejemplo fuera de alcance.
+El umbral y la regularización se eligen con las 3,100 consultas de validación,
+y la tabla reporta las 5,500 de prueba, de las cuales 1,000 están fuera de
+alcance. La latencia es por mensaje, en una laptop Apple Silicon, e incluye el
+cálculo del embedding.
 
-| router | exactitud | en alcance | recall fuera de alcance | F1 macro | p50 ms | p95 ms | escalados |
-|---|---|---|---|---|---|---|---|
-| centroide / hash | 0.6582 | 0.8044 | 0.0000 | 0.6654 | 0.07 | 0.11 | - |
-| kNN / hash | 0.8253 | 0.9364 | 0.3250 | 0.8397 | 2.62 | 2.87 | - |
-| kNN / hash + ejemplos fuera de alcance | 0.8255 | 0.9364 | 0.3260 | 0.8399 | 2.65 | 2.93 | - |
-| cascada / hash: centroide y luego kNN | 0.8225 | 0.9302 | 0.3380 | 0.8369 | 2.63 | 2.85 | 62.0% |
-| centroide / estático | 0.6458 | 0.7860 | 0.0150 | 0.6498 | 0.07 | 0.09 | - |
-| kNN / estático | 0.8175 | 0.9473 | 0.2330 | 0.8307 | 0.46 | 0.51 | - |
-| kNN / estático + ejemplos fuera de alcance | 0.8180 | 0.9473 | 0.2360 | 0.8313 | 0.48 | 0.56 | - |
-| cascada / estático: centroide y luego kNN | 0.8155 | 0.9436 | 0.2390 | 0.8287 | 0.54 | 0.60 | 72.8% |
+| router | exactitud | en alcance | recall fuera de alcance | F1 macro | p50 ms | p95 ms |
+|---|---|---|---|---|---|---|
+| centroide / hash | 0.6913 | 0.8449 | 0.0000 | 0.6966 | 0.09 | 0.12 |
+| kNN / hash | 0.8116 | 0.9313 | 0.2730 | 0.8251 | 9.02 | 11.44 |
+| kNN / estático | 0.8180 | 0.9473 | 0.2360 | 0.8313 | 0.47 | 0.82 |
+| lineal / hash | 0.8715 | 0.9622 | 0.4630 | 0.8868 | 0.14 | 0.17 |
+| lineal / transformer + hash | 0.8925 | 0.9760 | 0.5170 | 0.9066 | 4.67 | 6.92 |
 
 Qué dicen los números:
 
-- kNN sobre n-gramas de caracteres enruta bien el 93.6% de los mensajes en
-  alcance sin descargar ningún modelo. Los embeddings estáticos llegan a 94.7%
-  y son unas cinco veces más rápidos por mensaje porque sus vectores son más
-  pequeños.
-- Los centroides son 35 veces más rápidos que kNN y pierden unos 13 puntos en
-  alcance.
-- Rechazar mensajes fuera de alcance con un umbral de similitud es el punto
-  débil. La mejor configuración detecta un tercio. Agregar las 100 consultas
-  fuera de alcance de entrenamiento como ruta propia casi no cambia nada.
-- Poner centroides antes de kNN no conviene aquí: la mayoría de los mensajes
-  escala de todos modos y la exactitud baja un poco. Las etapas están pensadas
-  para una última etapa cara, como `LlmClassifier`.
+- El mejor router acierta el **97.6% de los mensajes dentro de alcance**. Usa
+  un clasificador lineal entrenado sobre la concatenación de embeddings de
+  `bge-small-en-v1.5` (ONNX, corre local) y n-gramas de caracteres.
+- Sin descargar ningún modelo, el clasificador lineal sobre n-gramas llega a
+  96.2% y decide en 0.14 ms por mensaje, 60 veces más rápido que kNN sobre las
+  mismas características.
+- Detectar mensajes fuera de alcance sigue siendo lo más difícil. El mejor
+  router atrapa el 52%, contra 27% de kNN. Por eso la exactitud total es 89.3%
+  y no 97%: el umbral se ajusta con validación, donde solo 100 de 3,100 casos
+  están fuera de alcance.
+- Los centroides son los más baratos, pero no separan nada fuera de alcance y
+  pierden 13 puntos dentro de alcance.
 
-`LlmClassifier`, `HttpEmbedder` y `OpenAICompat` están cubiertos con pruebas
-sobre transportes simulados. No se han medido contra una API real.
+`LinearClassifier` es regresión logística multinomial entrenada con Adam en
+NumPy, sin scikit-learn. `LlmClassifier`, `HttpEmbedder` y `OpenAICompat`
+están cubiertos con pruebas sobre transportes simulados, pero no se han medido
+contra una API real.
 
 Para reproducirlo:
 
 ```sh
-pip install -e ".[dev,static]"
+pip install -e ".[dev,static,onnx]"
 python scripts/bench_clinc.py
 ```
 
 El script descarga CLINC150 (CC BY 3.0) en `data/`, que no se sube al
-repositorio.
+repositorio, y el modelo ONNX en la caché de fastembed.
 
 ## Evaluar tu propio router
 
@@ -170,9 +173,11 @@ maximiza la exactitud en un conjunto de validación.
 
 ```sh
 pip install -e ".[dev]"
-pytest -q
+pytest -q --cov=rumbo
 ruff check . && ruff format --check .
 ```
+
+La cobertura es de 99% y el CI falla si baja de 95%.
 
 ## Licencia
 
