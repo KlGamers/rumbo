@@ -2,10 +2,18 @@ from .classify import (
     CentroidClassifier,
     Classifier,
     KnnClassifier,
+    LinearClassifier,
     LlmClassifier,
     PatternClassifier,
 )
-from .embed import Embedder, HashEmbedder, HttpEmbedder, StaticEmbedder
+from .embed import (
+    ConcatEmbedder,
+    Embedder,
+    HashEmbedder,
+    HttpEmbedder,
+    OnnxEmbedder,
+    StaticEmbedder,
+)
 from .evals import Case, Report, best_cut, load, run, score
 from .providers import FnProvider, OpenAICompat, Provider
 from .router import Router, Stage
@@ -15,13 +23,16 @@ __all__ = [
     "Case",
     "CentroidClassifier",
     "Classifier",
+    "ConcatEmbedder",
     "Decision",
     "Embedder",
     "FnProvider",
     "HashEmbedder",
     "HttpEmbedder",
     "KnnClassifier",
+    "LinearClassifier",
     "LlmClassifier",
+    "OnnxEmbedder",
     "OpenAICompat",
     "PatternClassifier",
     "Provider",

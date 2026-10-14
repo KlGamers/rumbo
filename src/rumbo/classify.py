@@ -92,6 +92,69 @@ class KnnClassifier(_VecBase):
         return out
 
 
+def softmax(z: np.ndarray) -> np.ndarray:
+    z = z - z.max(axis=1, keepdims=True)
+    e = np.exp(z)
+    return e / e.sum(axis=1, keepdims=True)
+
+
+class LinearClassifier:
+    name = "linear"
+
+    def __init__(
+        self,
+        routes: Sequence[Route],
+        emb: Embedder,
+        l2: float = 1e-5,
+        epochs: int = 300,
+        lr: float = 0.05,
+    ) -> None:
+        self.emb = emb
+        self.names = [r.name for r in routes if r.examples]
+        if len(self.names) < 2:
+            raise ValueError("linear classifier needs at least two routes with examples")
+        texts = [e for r in routes if r.examples for e in r.examples]
+        lbl = np.concatenate(
+            [np.full(len(r.examples), i) for i, r in enumerate(r for r in routes if r.examples)]
+        )
+        self.w, self.b = fit(emb.embed(texts), lbl, len(self.names), l2, epochs, lr)
+
+    def probs(self, texts: Sequence[str], batch: int = 256) -> np.ndarray:
+        out = [
+            softmax(self.emb.embed(texts[i : i + batch]) @ self.w + self.b)
+            for i in range(0, len(texts), batch)
+        ]
+        return np.vstack(out) if out else np.zeros((0, len(self.names)), dtype=np.float32)
+
+    def rank(self, text: str) -> list[Score]:
+        return self.rank_many([text])[0]
+
+    def rank_many(self, texts: Sequence[str], batch: int = 256) -> list[list[Score]]:
+        return [order(dict(zip(self.names, row, strict=True))) for row in self.probs(texts, batch)]
+
+
+def fit(
+    x: np.ndarray, y: np.ndarray, k: int, l2: float, epochs: int, lr: float
+) -> tuple[np.ndarray, np.ndarray]:
+    x = np.asarray(x, dtype=np.float32)
+    n, dim = x.shape
+    w = np.zeros((dim, k), dtype=np.float32)
+    b = np.zeros(k, dtype=np.float32)
+    hot = np.eye(k, dtype=np.float32)[y]
+    state = [np.zeros_like(w), np.zeros_like(w), np.zeros_like(b), np.zeros_like(b)]
+    for t in range(1, epochs + 1):
+        g = (softmax(x @ w + b) - hot) / n
+        gw = x.T @ g + l2 * w
+        gb = g.sum(axis=0)
+        for prm, grd, m, v in ((w, gw, state[0], state[1]), (b, gb, state[2], state[3])):
+            m *= 0.9
+            m += 0.1 * grd
+            v *= 0.999
+            v += 0.001 * grd * grd
+            prm -= lr * (m / (1 - 0.9**t)) / (np.sqrt(v / (1 - 0.999**t)) + 1e-8)
+    return w, b
+
+
 PROMPT = (
     "You are an intent router. Pick the single best route for the user message.\n"
     'Reply with JSON only: {{"route": "<name>", "confidence": <0..1>}}.\n'
